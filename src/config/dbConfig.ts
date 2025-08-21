@@ -13,4 +13,6 @@ export const dbConfig: PostgresConnectionOptions = {
   database: process.env.DATABASE_NAME,
   synchronize: true,
   entities: [join(__dirname, '/../**/*.entity.{ts,js}')],
+  // logging: true,
+  // logger: 'advanced-console',
 };
