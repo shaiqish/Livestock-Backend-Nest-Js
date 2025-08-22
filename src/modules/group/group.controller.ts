@@ -10,13 +10,17 @@ import {
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
+  Logger,
 } from '@nestjs/common';
+import { Filter } from 'src/common/interfaces/Filter.interface';
 import { GroupService } from './group.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 
 @Controller('groups')
 export class GroupController {
+  private readonly logger = new Logger(GroupController.name);
+
   constructor(private readonly groupService: GroupService) {}
 
   @Post()
@@ -27,10 +31,19 @@ export class GroupController {
 
   @Get()
   async findAll(
+    @Query('filters') filters: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
-    return this.groupService.findAll(page, limit);
+    let parsedFilters: Filter[] = [];
+
+    try {
+      parsedFilters = filters ? JSON.parse(filters) : [];
+    } catch (err) {
+      this.logger.error('Failed to parse filters:', err);
+    }
+
+    return this.groupService.findAll(parsedFilters, page, limit);
   }
 
   @Get(':id')

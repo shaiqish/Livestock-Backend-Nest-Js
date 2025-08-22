@@ -1,22 +1,10 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  ManyToOne,
-  JoinColumn,
-  JoinTable,
-  ManyToMany,
-} from 'typeorm';
+import { Entity, Column, JoinTable, ManyToMany } from 'typeorm';
+import { BaseEntity } from 'src/common/entities/base.entity';
 import { Livestock } from 'src/modules/livestock/entities/livestock.entity';
 import { PaymentMethodEnum } from 'src/common/enums/PaymentMethod.enum';
 
 @Entity('medications')
-export class Medication {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Medication extends BaseEntity {
   @Column({ type: 'date' })
   date: Date;
 
@@ -76,10 +64,4 @@ export class Medication {
   })
   @JoinTable()
   livestocks: Livestock[];
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }

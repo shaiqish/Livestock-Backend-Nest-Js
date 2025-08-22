@@ -1,18 +1,9 @@
 import { Sell } from 'src/modules/sell/entities/sell.entity';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany,
-} from 'typeorm';
+import { Entity, Column, OneToMany } from 'typeorm';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('contacts')
-export class Contact {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Contact extends BaseEntity {
   @Column({ name: 'full_name', type: 'varchar', length: 100 })
   fullName: string;
 
@@ -67,10 +58,4 @@ export class Contact {
 
   @OneToMany(() => Sell, (sell) => sell.pointOfContactInfo)
   pointOfContactSells: Sell[];
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }

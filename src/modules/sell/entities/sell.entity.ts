@@ -1,25 +1,14 @@
 import { PaymentMethodEnum } from 'src/common/enums/PaymentMethod.enum';
 import { DecimalToNumberTransformer } from 'src/common/tranformers/DecimalToNumber.tranformer';
 import { Livestock } from 'src/modules/livestock/entities/livestock.entity';
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  JoinColumn,
-  ManyToOne,
-  OneToOne,
-  PrimaryGeneratedColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToOne, OneToOne } from 'typeorm';
+import { BaseEntity } from 'src/common/entities/base.entity';
 import { Contact } from 'src/modules/contact/entities/contact.entity';
 
 //Note : The enums used here were based on the frontend mock dropdowns, as the frontend wasn't complete yet so the enums are just mock right now. Can be changed when the actual dropdown data or values are known.
 
 @Entity()
-export class Sell {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Sell extends BaseEntity {
   @Column({
     type: 'decimal',
     precision: 10,
@@ -52,7 +41,7 @@ export class Sell {
   })
   balanceDue: number;
 
-  @Column({ type: 'varchar', length: 20, name: 'buyer_name' })
+  @Column({ type: 'varchar', length: 20, name: 'zip_code' })
   zipCode: string;
 
   @Column({ type: 'text', name: 'terms_and_conditions' })
@@ -72,10 +61,4 @@ export class Sell {
   )
   @JoinColumn({ name: 'point_of_contact_id' })
   pointOfContactInfo: Contact;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 }

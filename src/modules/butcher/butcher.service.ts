@@ -6,11 +6,13 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { CreateButcherDto } from './dto/create-butcher.dto';
 import { UpdateButcherDto } from './dto/update-butcher.dto';
 import { Butcher } from './entities/butcher.entity';
 import { Livestock } from '../livestock/entities/livestock.entity';
+import { Filter } from 'src/common/interfaces/Filter.interface';
+import { applyFilters } from 'src/common/functions/applyFilters';
 
 @Injectable()
 export class ButcherService {
@@ -19,20 +21,17 @@ export class ButcherService {
   constructor(
     @InjectRepository(Butcher)
     private readonly butcherRepository: Repository<Butcher>,
-    private readonly dataSource: DataSource,
+    @InjectRepository(Livestock)
+    private readonly livestockRepository: Repository<Livestock>,
   ) {}
 
   async create(
     createButcherDto: CreateButcherDto,
     livestockId: string,
   ): Promise<{ message: string; data: Butcher }> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
     try {
       // Check if butcher with same internalId exists
-      const existing = await queryRunner.manager.findOne(Butcher, {
+      const existing = await this.butcherRepository.findOne({
         where: { internalId: createButcherDto.internalId },
       });
 
@@ -43,7 +42,7 @@ export class ButcherService {
       }
 
       // Check if livestock exists
-      const livestock = await queryRunner.manager.findOne(Livestock, {
+      const livestock = await this.livestockRepository.findOne({
         where: { id: livestockId },
       });
 
@@ -54,7 +53,7 @@ export class ButcherService {
       }
 
       // Check if livestock is already butchered
-      const existingButcher = await queryRunner.manager.findOne(Butcher, {
+      const existingButcher = await this.butcherRepository.findOne({
         where: { livestock: { id: livestockId } },
       });
 
@@ -64,20 +63,18 @@ export class ButcherService {
         );
       }
 
-      const butcher = queryRunner.manager.create(Butcher, {
+      const butcher = this.butcherRepository.create({
         ...createButcherDto,
         livestock,
       });
 
-      const savedButcher = await queryRunner.manager.save(Butcher, butcher);
-      await queryRunner.commitTransaction();
+      const savedButcher = await this.butcherRepository.save(butcher);
 
       return {
         message: 'Butcher record created successfully',
         data: savedButcher,
       };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
       this.logger.error(
         'Failed to create butcher record',
         error instanceof Error ? error.stack : error,
@@ -89,18 +86,17 @@ export class ButcherService {
         throw error;
       }
       throw new InternalServerErrorException('Failed to create butcher record');
-    } finally {
-      await queryRunner.release();
     }
   }
 
   async findAll(
-    page: number = 1,
-    limit: number = 10,
+    filters: Filter[],
+    page?: number,
+    limit?: number,
   ): Promise<{
     message: string;
     data: Butcher[];
-    meta: {
+    meta?: {
       total: number;
       page: number;
       limit: number;
@@ -108,24 +104,41 @@ export class ButcherService {
     };
   }> {
     try {
-      const [butchers, total] = await this.butcherRepository.findAndCount({
-        skip: (page - 1) * limit,
-        take: limit,
-        order: {
-          createdAt: 'DESC',
-        },
-        relations: ['livestock'],
-      });
+      const qb = this.butcherRepository.createQueryBuilder('butcher');
+      qb.leftJoinAndSelect('butcher.livestock', 'livestock');
 
+      const filteredQb = applyFilters(
+        qb,
+        filters,
+        this.butcherRepository.manager.connection,
+        'butcher',
+        Butcher,
+      ).orderBy('butcher.createdAt', 'DESC');
+
+      // Only apply pagination if both page and limit are provided
+      if (page !== undefined && limit !== undefined) {
+        const [items, total] = await filteredQb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getManyAndCount();
+
+        return {
+          message: 'Butcher records retrieved successfully',
+          data: items,
+          meta: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+          },
+        };
+      }
+
+      // Return all records without pagination
+      const items = await filteredQb.getMany();
       return {
         message: 'Butcher records retrieved successfully',
-        data: butchers,
-        meta: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit),
-        },
+        data: items,
       };
     } catch (error) {
       this.logger.error(

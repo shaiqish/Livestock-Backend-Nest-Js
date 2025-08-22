@@ -17,14 +17,12 @@ import {
   ManyToMany,
 } from 'typeorm';
 import { Medication } from 'src/modules/treatments/medication/entities/medication.entity';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 //Note : The enums used here were based on the frontend mock dropdowns, as the frontend wasn't complete yet so the enums are just mock right now. Can be changed when the actual dropdown data or values are known.
 
 @Entity('livestock')
-export class Livestock {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Livestock extends BaseEntity {
   //-----------------------Basic Information-------------------
 
   @Column({ type: 'varchar', length: 255 })
@@ -115,10 +113,4 @@ export class Livestock {
 
   @ManyToMany(() => Medication, (medication) => medication.livestocks)
   medications: Medication[];
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }

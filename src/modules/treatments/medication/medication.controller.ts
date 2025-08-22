@@ -9,13 +9,17 @@ import {
   Query,
   ParseUUIDPipe,
   ParseIntPipe,
+  Logger,
 } from '@nestjs/common';
+import { Filter } from 'src/common/interfaces/Filter.interface';
 import { MedicationService } from './medication.service';
 import { CreateMedicationDto } from './dto/create-medication.dto';
 import { UpdateMedicationDto } from './dto/update-medication.dto';
 
 @Controller('medications')
 export class MedicationController {
+  private readonly logger = new Logger(MedicationController.name);
+
   constructor(private readonly medicationService: MedicationService) {}
 
   @Post('livestock/:livestockId')
@@ -24,11 +28,20 @@ export class MedicationController {
   }
 
   @Get()
-  findAll(
+  async findAll(
+    @Query('filters') filters: string,
     @Query('page', new ParseIntPipe({ optional: true })) page?: number,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    return this.medicationService.findAll(page, limit);
+    let parsedFilters: Filter[] = [];
+
+    try {
+      parsedFilters = filters ? JSON.parse(filters) : [];
+    } catch (err) {
+      this.logger.error('Failed to parse filters:', err);
+    }
+
+    return this.medicationService.findAll(parsedFilters, page, limit);
   }
 
   @Get(':id')

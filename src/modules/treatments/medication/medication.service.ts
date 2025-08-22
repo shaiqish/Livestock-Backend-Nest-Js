@@ -2,131 +2,220 @@ import {
   Injectable,
   NotFoundException,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { CreateMedicationDto } from './dto/create-medication.dto';
 import { UpdateMedicationDto } from './dto/update-medication.dto';
 import { Medication } from './entities/medication.entity';
 import { Livestock } from 'src/modules/livestock/entities/livestock.entity';
+import { Filter } from 'src/common/interfaces/Filter.interface';
+import { applyFilters } from 'src/common/functions/applyFilters';
 
 @Injectable()
 export class MedicationService {
+  private readonly logger = new Logger(MedicationService.name);
+
   constructor(
     @InjectRepository(Medication)
     private readonly medicationRepository: Repository<Medication>,
     @InjectRepository(Livestock)
-    private readonly dataSource: DataSource,
+    private readonly livestockRepository: Repository<Livestock>,
   ) {}
 
-  async create(createMedicationDto: CreateMedicationDto) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
+  async create(
+    createMedicationDto: CreateMedicationDto,
+  ): Promise<{ message: string; data: Medication }> {
     try {
-      const livestocks = await Promise.all(
-        createMedicationDto.livestockIds.map(async (id) => {
-          const livestock = await queryRunner.manager.findOne(Livestock, {
-            where: { id },
-          });
-          if (!livestock) {
-            throw new NotFoundException(`Livestock with ID ${id} not found`);
-          }
-          return livestock;
-        }),
-      );
+      const livestocks = await this.livestockRepository.findBy({
+        id: In(createMedicationDto.livestockIds),
+      });
+
+      // Check if any ID was not found
+      if (livestocks.length !== createMedicationDto.livestockIds.length) {
+        const foundIds = livestocks.map((l) => l.id);
+        const missingIds = createMedicationDto.livestockIds.filter(
+          (id) => !foundIds.includes(id),
+        );
+        throw new NotFoundException(
+          `Livestock with IDs [${missingIds.join(', ')}] not found`,
+        );
+      }
 
       const medication = this.medicationRepository.create({
         ...createMedicationDto,
         livestocks,
       });
 
-      await Promise.all(
-        livestocks.map((livestock) => {
-          livestock.medications.push(medication);
-          return queryRunner.manager.save(Livestock, livestock);
-        }),
-      );
+      const result = await this.medicationRepository.save(medication);
 
-      const result = await queryRunner.manager.save(medication);
-      await queryRunner.commitTransaction();
-      return result;
+      return {
+        message: 'Medication record created successfully',
+        data: result,
+      };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw new InternalServerErrorException(
-        'An error occurred while creating the medication record',
+      this.logger.error(
+        'Failed to create medication record',
+        error instanceof Error ? error.stack : error,
       );
-    } finally {
-      await queryRunner.release();
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(
+        'Failed to create medication record',
+      );
     }
   }
 
-  async findAll(page: number = 1, limit: number = 10) {
-    const [items, total] = await this.medicationRepository.findAndCount({
-      skip: (page - 1) * limit,
-      take: limit,
-      relations: ['livestock'],
-      order: { date: 'DESC' },
-    });
-
-    return {
-      items,
-      total,
-      page,
-      limit,
+  async findAll(
+    filters: Filter[],
+    page?: number,
+    limit?: number,
+  ): Promise<{
+    message: string;
+    data: Medication[];
+    meta?: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
     };
-  }
+  }> {
+    try {
+      const qb = this.medicationRepository.createQueryBuilder('medication');
+      qb.leftJoinAndSelect('medication.livestocks', 'livestocks');
 
-  async findOne(id: string) {
-    const medication = await this.medicationRepository.findOne({
-      where: { id },
-      relations: ['livestock'],
-    });
+      const filteredQb = applyFilters(
+        qb,
+        filters,
+        this.medicationRepository.manager.connection,
+        'medication',
+        Medication,
+      ).orderBy('medication.date', 'DESC');
 
-    if (!medication) {
-      throw new NotFoundException(`Medication with ID ${id} not found`);
+      // Only apply pagination if both page and limit are provided
+      if (page !== undefined && limit !== undefined) {
+        const [items, total] = await filteredQb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getManyAndCount();
+
+        return {
+          message: 'Medication records retrieved successfully',
+          data: items,
+          meta: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+          },
+        };
+      }
+
+      // Return all records without pagination
+      const items = await filteredQb.getMany();
+      return {
+        message: 'Medication records retrieved successfully',
+        data: items,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Failed to retrieve medication records',
+        error instanceof Error ? error.stack : error,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve medication records',
+      );
     }
-
-    return medication;
   }
 
-  async update(id: string, updateMedicationDto: UpdateMedicationDto) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
+  async findOne(id: string): Promise<{ message: string; data: Medication }> {
     try {
       const medication = await this.medicationRepository.findOne({
         where: { id },
+        relations: ['livestocks'],
       });
 
       if (!medication) {
         throw new NotFoundException(`Medication with ID ${id} not found`);
+      }
+
+      return {
+        message: 'Medication record retrieved successfully',
+        data: medication,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to retrieve medication record ${id}`,
+        error instanceof Error ? error.stack : error,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve medication record',
+      );
+    }
+  }
+
+  async update(
+    id: string,
+    updateMedicationDto: UpdateMedicationDto,
+  ): Promise<{ message: string; data: Medication }> {
+    try {
+      const medication = await this.medicationRepository.findOne({
+        where: { id },
+        relations: ['livestocks'],
+      });
+
+      if (!medication) {
+        throw new NotFoundException(`Medication with ID ${id} not found`);
+      }
+
+      // Update livestock relationships if provided
+      if (updateMedicationDto.livestockIds) {
+        const livestocks = await Promise.all(
+          updateMedicationDto.livestockIds.map(async (livestockId) => {
+            const livestock = await this.livestockRepository.findOne({
+              where: { id: livestockId },
+            });
+            if (!livestock) {
+              throw new NotFoundException(
+                `Livestock with ID ${livestockId} not found`,
+              );
+            }
+            return livestock;
+          }),
+        );
+        medication.livestocks = livestocks;
       }
 
       const updatedMedication = this.medicationRepository.merge(
         medication,
         updateMedicationDto,
       );
-      const result = await queryRunner.manager.save(updatedMedication);
-      await queryRunner.commitTransaction();
-      return result;
+      const result = await this.medicationRepository.save(updatedMedication);
+
+      return {
+        message: 'Medication record updated successfully',
+        data: result,
+      };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw new InternalServerErrorException(
-        'An error occurred while updating the medication record',
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to update medication record ${id}`,
+        error instanceof Error ? error.stack : error,
       );
-    } finally {
-      await queryRunner.release();
+      throw new InternalServerErrorException(
+        'Failed to update medication record',
+      );
     }
   }
 
-  async remove(id: string) {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-
+  async remove(id: string): Promise<{ message: string }> {
     try {
       const medication = await this.medicationRepository.findOne({
         where: { id },
@@ -136,15 +225,22 @@ export class MedicationService {
         throw new NotFoundException(`Medication with ID ${id} not found`);
       }
 
-      await queryRunner.manager.remove(medication);
-      await queryRunner.commitTransaction();
+      await this.medicationRepository.remove(medication);
+
+      return {
+        message: 'Medication record deleted successfully',
+      };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
-      throw new InternalServerErrorException(
-        'An error occurred while deleting the medication record',
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        `Failed to delete medication record ${id}`,
+        error instanceof Error ? error.stack : error,
       );
-    } finally {
-      await queryRunner.release();
+      throw new InternalServerErrorException(
+        'Failed to delete medication record',
+      );
     }
   }
 }

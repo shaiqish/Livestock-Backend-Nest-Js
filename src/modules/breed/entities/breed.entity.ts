@@ -1,17 +1,9 @@
 import { PaymentMethodEnum } from 'src/common/enums/PaymentMethod.enum';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Entity, Column } from 'typeorm';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('breed')
-export class Breed {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Breed extends BaseEntity {
   // ------------------ Breed Animal ------------------
 
   @Column({ type: 'date' })
@@ -55,12 +47,4 @@ export class Breed {
 
   @Column({ type: 'int' })
   numberOfOffspring: number;
-
-  // ------------------ Metadata ------------------
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
 }

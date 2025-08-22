@@ -10,13 +10,17 @@ import {
   HttpCode,
   ParseUUIDPipe,
   Query,
+  Logger,
 } from '@nestjs/common';
+import { Filter } from 'src/common/interfaces/Filter.interface';
 import { ContactService } from './contact.service';
 import { CreateContactDto } from './dto/create-contact.dto';
 import { UpdateContactDto } from './dto/update-contact.dto';
 
 @Controller('contacts')
 export class ContactController {
+  private readonly logger = new Logger(ContactController.name);
+
   constructor(private readonly contactService: ContactService) {}
 
   @Post()
@@ -27,10 +31,19 @@ export class ContactController {
 
   @Get()
   async findAll(
+    @Query('filters') filters: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
-    return this.contactService.findAll(page, limit);
+    let parsedFilters: Filter[] = [];
+
+    try {
+      parsedFilters = filters ? JSON.parse(filters) : [];
+    } catch (err) {
+      this.logger.error('Failed to parse filters:', err);
+    }
+
+    return this.contactService.findAll(parsedFilters, page, limit);
   }
 
   @Get(':id')

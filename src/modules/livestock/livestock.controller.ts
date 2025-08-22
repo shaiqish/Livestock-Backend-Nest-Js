@@ -31,23 +31,15 @@ export class LivestockController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
   ) {
-    const start = Date.now();
     let parsedFilters: Filter[] = [];
 
     try {
       parsedFilters = filters ? JSON.parse(filters) : [];
     } catch (err) {
-      console.error('Failed to parse filters:', err);
+      this.logger.error('Failed to parse filters:', err);
     }
 
-    const result = await this.livestockService.findAll(
-      parsedFilters,
-      page,
-      limit,
-    );
-    const end = Date.now();
-    this.logger.log(`findAll executed in ${end - start}ms`);
-    return result;
+    return this.livestockService.findAll(parsedFilters, page, limit);
   }
 
   @Get(':id')

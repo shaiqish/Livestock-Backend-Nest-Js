@@ -1,19 +1,9 @@
 import { Livestock } from 'src/modules/livestock/entities/livestock.entity';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToOne,
-  JoinColumn,
-} from 'typeorm';
+import { Entity, Column, OneToOne, JoinColumn } from 'typeorm';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('butchers')
-export class Butcher {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Butcher extends BaseEntity {
   @Column({ type: 'varchar', length: 100 })
   name: string;
 
@@ -38,10 +28,4 @@ export class Butcher {
   @OneToOne(() => Livestock, (livestock) => livestock.butcher)
   @JoinColumn()
   livestock: Livestock;
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }

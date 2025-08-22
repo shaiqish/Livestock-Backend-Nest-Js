@@ -8,15 +8,20 @@ import {
   Delete,
   Query,
   ParseUUIDPipe,
+  ParseIntPipe,
   HttpStatus,
   HttpCode,
+  Logger,
 } from '@nestjs/common';
+import { Filter } from 'src/common/interfaces/Filter.interface';
 import { ButcherService } from './butcher.service';
 import { CreateButcherDto } from './dto/create-butcher.dto';
 import { UpdateButcherDto } from './dto/update-butcher.dto';
 
 @Controller('butchers')
 export class ButcherController {
+  private readonly logger = new Logger(ButcherController.name);
+
   constructor(private readonly butcherService: ButcherService) {}
 
   @Post(':livestockId')
@@ -30,10 +35,19 @@ export class ButcherController {
 
   @Get()
   async findAll(
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 10,
+    @Query('filters') filters: string,
+    @Query('page', ParseIntPipe) page?: number,
+    @Query('limit', ParseIntPipe) limit?: number,
   ) {
-    return this.butcherService.findAll(page, limit);
+    let parsedFilters: Filter[] = [];
+
+    try {
+      parsedFilters = filters ? JSON.parse(filters) : [];
+    } catch (err) {
+      this.logger.error('Failed to parse filters:', err);
+    }
+
+    return this.butcherService.findAll(parsedFilters, page, limit);
   }
 
   @Get(':id')

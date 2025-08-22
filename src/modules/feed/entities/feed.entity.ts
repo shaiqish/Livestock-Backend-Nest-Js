@@ -1,19 +1,9 @@
 import { Livestock } from 'src/modules/livestock/entities/livestock.entity';
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  OneToMany,
-  JoinColumn,
-} from 'typeorm';
+import { Entity, Column, OneToMany } from 'typeorm';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('feeds')
-export class Feed {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Feed extends BaseEntity {
   @Column({ type: 'varchar', length: 100 })
   feedType: string;
 
@@ -31,10 +21,4 @@ export class Feed {
 
   @OneToMany(() => Livestock, (livestock) => livestock.feed)
   livestocks: Livestock[];
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }

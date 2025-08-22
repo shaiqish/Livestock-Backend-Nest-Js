@@ -4,89 +4,171 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateBreedDto } from './dto/create-breed.dto';
 import { UpdateBreedDto } from './dto/update-breed.dto';
 import { Breed } from './entities/breed.entity';
+import { Filter } from 'src/common/interfaces/Filter.interface';
+import { applyFilters } from 'src/common/functions/applyFilters';
 
 @Injectable()
 export class BreedService {
   private readonly logger = new Logger(BreedService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectRepository(Breed)
+    private readonly breedRepository: Repository<Breed>,
+  ) {}
 
-  async create(createBreedDto: CreateBreedDto): Promise<Breed> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+  async create(
+    createBreedDto: CreateBreedDto,
+  ): Promise<{ message: string; data: Breed }> {
     try {
-      const breed = queryRunner.manager.create(Breed, createBreedDto);
-      const savedBreed = await queryRunner.manager.save(Breed, breed);
-      await queryRunner.commitTransaction();
-      return savedBreed;
+      const breed = this.breedRepository.create(createBreedDto);
+      const savedBreed = await this.breedRepository.save(breed);
+
+      return {
+        message: 'Breed created successfully',
+        data: savedBreed,
+      };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
-      this.logger.error('Failed to create breed', error.stack);
+      this.logger.error(
+        'Failed to create breed',
+        error instanceof Error ? error.stack : error,
+      );
       throw new InternalServerErrorException('Failed to create breed');
-    } finally {
-      await queryRunner.release();
     }
   }
 
-  async findAll(): Promise<Breed[]> {
-    return this.dataSource.getRepository(Breed).find();
-  }
-
-  async findOne(id: string): Promise<Breed> {
-    const breed = await this.dataSource
-      .getRepository(Breed)
-      .findOne({ where: { id } });
-    if (!breed) {
-      throw new NotFoundException(`Breed with id ${id} not found`);
-    }
-    return breed;
-  }
-
-  async update(id: string, updateBreedDto: UpdateBreedDto): Promise<Breed> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+  async findAll(
+    filters: Filter[],
+    page?: number,
+    limit?: number,
+  ): Promise<{
+    message: string;
+    data: Breed[];
+    meta?: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    };
+  }> {
     try {
-      const breed = await queryRunner.manager.findOne(Breed, { where: { id } });
+      const qb = this.breedRepository.createQueryBuilder('breed');
+
+      const filteredQb = applyFilters(
+        qb,
+        filters,
+        this.breedRepository.manager.connection,
+        'breed',
+        Breed,
+      ).orderBy('breed.createdAt', 'DESC');
+
+      // Only apply pagination if both page and limit are provided
+      if (page !== undefined && limit !== undefined) {
+        const [items, total] = await filteredQb
+          .skip((page - 1) * limit)
+          .take(limit)
+          .getManyAndCount();
+
+        return {
+          message: 'Breeds retrieved successfully',
+          data: items,
+          meta: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+          },
+        };
+      }
+
+      // Return all records without pagination
+      const items = await filteredQb.getMany();
+      return {
+        message: 'Breeds retrieved successfully',
+        data: items,
+      };
+    } catch (error) {
+      this.logger.error(
+        'Failed to retrieve breeds',
+        error instanceof Error ? error.stack : error,
+      );
+      throw new InternalServerErrorException('Failed to retrieve breeds');
+    }
+  }
+
+  async findOne(id: string): Promise<{ message: string; data: Breed }> {
+    try {
+      const breed = await this.breedRepository.findOne({ where: { id } });
+
       if (!breed) {
         throw new NotFoundException(`Breed with id ${id} not found`);
       }
-      const updated = queryRunner.manager.merge(Breed, breed, updateBreedDto);
-      const saved = await queryRunner.manager.save(Breed, updated);
-      await queryRunner.commitTransaction();
-      return saved;
+
+      return {
+        message: 'Breed retrieved successfully',
+        data: breed,
+      };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to update breed id ${id}`, error.stack);
+      if (error instanceof NotFoundException) throw error;
+
+      this.logger.error(
+        `Failed to retrieve breed ${id}`,
+        error instanceof Error ? error.stack : error,
+      );
+      throw new InternalServerErrorException('Failed to retrieve breed');
+    }
+  }
+
+  async update(
+    id: string,
+    updateBreedDto: UpdateBreedDto,
+  ): Promise<{ message: string; data: Breed }> {
+    try {
+      const breed = await this.breedRepository.findOne({ where: { id } });
+      if (!breed) {
+        throw new NotFoundException(`Breed with id ${id} not found`);
+      }
+
+      const updated = this.breedRepository.merge(breed, updateBreedDto);
+      const saved = await this.breedRepository.save(updated);
+
+      return {
+        message: 'Breed updated successfully',
+        data: saved,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+
+      this.logger.error(
+        `Failed to update breed ${id}`,
+        error instanceof Error ? error.stack : error,
+      );
       throw new InternalServerErrorException('Failed to update breed');
-    } finally {
-      await queryRunner.release();
     }
   }
 
-  async remove(id: string): Promise<{ deleted: boolean }> {
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
+  async remove(id: string): Promise<{ message: string }> {
     try {
-      const breed = await queryRunner.manager.findOne(Breed, { where: { id } });
+      const breed = await this.breedRepository.findOne({ where: { id } });
       if (!breed) {
         throw new NotFoundException(`Breed with id ${id} not found`);
       }
-      await queryRunner.manager.remove(Breed, breed);
-      await queryRunner.commitTransaction();
-      return { deleted: true };
+
+      await this.breedRepository.remove(breed);
+
+      return { message: 'Breed deleted successfully' };
     } catch (error) {
-      await queryRunner.rollbackTransaction();
-      this.logger.error(`Failed to delete breed id ${id}`, error.stack);
+      if (error instanceof NotFoundException) throw error;
+
+      this.logger.error(
+        `Failed to delete breed ${id}`,
+        error instanceof Error ? error.stack : error,
+      );
       throw new InternalServerErrorException('Failed to delete breed');
-    } finally {
-      await queryRunner.release();
     }
   }
 }

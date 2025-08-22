@@ -1,16 +1,8 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-} from 'typeorm';
+import { Entity, Column } from 'typeorm';
+import { BaseEntity } from 'src/common/entities/base.entity';
 
 @Entity('group')
-export class Group {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
+export class Group extends BaseEntity {
   @Column({ name: 'group_name', type: 'varchar', length: 100 })
   groupName: string;
 
@@ -27,10 +19,4 @@ export class Group {
 
   @Column({ type: 'text', nullable: true })
   remarks?: string;
-
-  @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
-
-  @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
 }
